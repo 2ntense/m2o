@@ -129,15 +129,16 @@ int main(int argc, char *argv[])
 	do
 	{
 		err = mpg123_read(mh, buf, sizeof(buf), &done);
-		ope_encoder_write(enc, buf, buf_size);
-		samples += done;
+		printf("done: %zu\n", done);
+		ope_encoder_write(enc, buf, done / (channels*2));
+		samples += done / (channels*2);
 	} while (err==MPG123_OK);
 
 	if(err != MPG123_DONE)
 	fprintf( stderr, "Warning: Decoding ended prematurely because: %s\n",
 	         err == MPG123_ERR ? mpg123_strerror(mh) : mpg123_plain_strerror(err) );
 
-	samples /= channels;
+	// samples /= channels;
 	printf("%li samples written.\n", (long)samples);
 	cleanup(mh);
 	ope_comments_destroy(comments);
