@@ -2,7 +2,6 @@
 #include <strings.h>
 #include <mpg123.h>
 #include <opus/opusenc.h>
-#include <id3v2lib.h>
 
 #define FIELD_TITLE "TITLE"
 #define FIELD_ARTIST "ARTIST"
@@ -45,6 +44,7 @@ int main(int argc, char *argv[])
 
 	err = mpg123_init();
 	mh = mpg123_new(NULL, &err);
+
 	err = mpg123_param(mh, MPG123_ADD_FLAGS, MPG123_PICTURE, 1);
 	if(err != MPG123_OK || mh == NULL)
 	{
@@ -52,9 +52,6 @@ int main(int argc, char *argv[])
 		cleanup(mh);
 		return -1;
 	}
-
-	/* Simple hack to enable floating point output. */
-	// if(argc >= 4 && !strcmp(argv[3], "f32")) mpg123_param(mh, MPG123_ADD_FLAGS, MPG123_FORCE_FLOAT, 0.);
 
 	/* Let mpg123 work with the file, that excludes MPG123_NEED_MORE messages. */
 	if(mpg123_open(mh, argv[1]) != MPG123_OK
@@ -66,15 +63,11 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	printf("Sampling rate: %lu\n", rate);
-	printf("Channels: %d\n", channels);
-	printf("Encoding: %d\n", encoding);
-	comments = ope_comments_create();
-
 	mpg123_id3v1 *v1 = NULL;
 	mpg123_id3v2 *v2 = NULL;
 	mpg123_id3(mh, &v1, &v2);
 
+	comments = ope_comments_create();
 	if (v2) {
 		if(v2->title) {
 			ope_comments_add(comments, FIELD_TITLE, v2->title->p);
@@ -100,7 +93,6 @@ int main(int argc, char *argv[])
 		if(v2->picture) {
 			ope_comments_add_picture_from_memory(comments, v2->picture->data, v2->picture->size, -1, NULL);
 		}
-		// ope_comments_add(comments, "DESCRIPTION", "hello world");
 	}
 	else if (v1) {
 		// handle id3v1 data
@@ -127,10 +119,13 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
+	ope_encoder_ctl(enc, OPUS_SET_SIGNAL(OPUS_SIGNAL_MUSIC));
+	ope_encoder_ctl(enc, OPUS_SET_BITRATE(96000));
+	ope_encoder_ctl(enc, OPUS_SET_VBR(1));
+
 	size_t buf_size = mpg123_outblock(mh);
 	short buf[2*buf_size];
 
-	puts("start run");
 	do
 	{
 		err = mpg123_read(mh, buf, sizeof(buf), &done);
