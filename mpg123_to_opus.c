@@ -1,9 +1,7 @@
 #include <stdio.h>
 #include <strings.h>
 #include <mpg123.h>
-#include <sndfile.h>
 #include <opus/opusenc.h>
-
 
 void usage()
 {
@@ -20,11 +18,7 @@ void cleanup(mpg123_handle *mh)
 
 int main(int argc, char *argv[])
 {
-	SNDFILE* sndfile = NULL;
-	SF_INFO sfinfo;
 	mpg123_handle *mh = NULL;
-	// unsigned char* buffer = NULL;
-	size_t buffer_size = 0;
 	size_t done = 0;
 	int  channels = 0, encoding = 0;
 	long rate = 0;
@@ -79,58 +73,26 @@ int main(int argc, char *argv[])
 	mpg123_format_none(mh);
 	mpg123_format(mh, rate, channels, encoding);
 
-	// bzero(&sfinfo, sizeof(sfinfo) );
-	// sfinfo.samplerate = rate;
-	// sfinfo.channels = channels;
-	// sfinfo.format = SF_FORMAT_WAV|(encoding == MPG123_ENC_SIGNED_16 ? SF_FORMAT_PCM_16 : SF_FORMAT_FLOAT);
-	// printf("Creating WAV with %i channels and %liHz.\n", channels, rate);
-	puts("1");
-	// sndfile = sf_open(argv[2], SFM_WRITE, &sfinfo);
-	// if(sndfile == NULL){ fprintf(stderr, "Cannot open output file!\n"); cleanup(mh); return -2; }
-
-	// enc = ope_encoder_create_file(argv[2], comments, (opus_int32)rate, channels, 0, NULL);
 	enc = ope_encoder_create_file(argv[2], comments, rate, channels, 0, NULL);
 	if (!enc) {
 		printf("ope encoder create file error\n");
 		return -1;
 	}
 
-	/* Buffer could be almost any size here, mpg123_outblock() is just some recommendation.
-	   Important, especially for sndfile writing, is that the size is a multiple of sample size. */
-	// buffer_size = argc >= 5 ? atol(argv[4]) : mpg123_outblock(mh);
-	// buffer_size = 256;
-	// short buf[2*256];
-	// buffer = malloc( buffer_size );
+	size_t buf_size = mpg123_outblock(mh);
+	short buf[2*buf_size];
 
 	puts("start run");
 	do
 	{
-		short buffer[2*256];
-		short buf2[256];
-		// sf_count_t more_samples;
-		err = mpg123_read( mh, buffer, 512, &done );
-		for(int i = 0; i < 256; i++) {
-			buf2[i] = buffer[i*1];
-		}
-		ope_encoder_write(enc, buf2, done/2);
-		// more_samples = encoding == MPG123_ENC_SIGNED_16
-		// 	? sf_write_short(sndfile, (short*)buffer, done/sizeof(short))
-		// 	: sf_write_float(sndfile, (float*)buffer, done/sizeof(float));
-		// if(more_samples < 0 || more_samples*mpg123_encsize(encoding) != done)
-		// {
-		// 	fprintf(stderr, "Warning: Written number of samples does not match the byte count we got from libmpg123: %li != %li\n", (long)(more_samples*mpg123_encsize(encoding)), (long)done);
-		// }
-		// samples += more_samples;
+		err = mpg123_read(mh, buf, sizeof(buf), &done);
+		ope_encoder_write(enc, buf, buf_size);
 		samples += done;
-		/* We are not in feeder mode, so MPG123_OK, MPG123_ERR and MPG123_NEW_FORMAT are the only possibilities.
-		   We do not handle a new format, MPG123_DONE is the end... so abort on anything not MPG123_OK. */
 	} while (err==MPG123_OK);
 
 	if(err != MPG123_DONE)
 	fprintf( stderr, "Warning: Decoding ended prematurely because: %s\n",
 	         err == MPG123_ERR ? mpg123_strerror(mh) : mpg123_plain_strerror(err) );
-
-	// sf_close( sndfile );
 
 	samples /= channels;
 	printf("%li samples written.\n", (long)samples);
