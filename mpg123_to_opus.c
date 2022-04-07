@@ -2,6 +2,15 @@
 #include <strings.h>
 #include <mpg123.h>
 #include <opus/opusenc.h>
+#include <id3v2lib.h>
+
+#define FIELD_TITLE "TITLE"
+#define FIELD_ARTIST "ARTIST"
+#define FIELD_ALBUM "ALBUM"
+#define FIELD_ALBUMARTIST "ALBUMARTIST"
+#define FIELD_TRACKNUMBER "TRACKNUMBER"
+#define FIELD_GENRE "GENRE"
+#define FIELD_DATE "DATE"
 
 void usage()
 {
@@ -33,9 +42,10 @@ int main(int argc, char *argv[])
 	}
 	printf( "Input file: %s\n", argv[1]);
 	printf( "Output file: %s\n", argv[2]);
-	
+
 	err = mpg123_init();
 	mh = mpg123_new(NULL, &err);
+	err = mpg123_param(mh, MPG123_ADD_FLAGS, MPG123_PICTURE, 1);
 	if(err != MPG123_OK || mh == NULL)
 	{
 		fprintf(stderr, "Basic setup goes wrong: %s", mpg123_plain_strerror(err));
@@ -59,8 +69,46 @@ int main(int argc, char *argv[])
 	printf("Sampling rate: %lu\n", rate);
 	printf("Channels: %d\n", channels);
 	printf("Encoding: %d\n", encoding);
-
 	comments = ope_comments_create();
+
+	mpg123_id3v1 *v1 = NULL;
+	mpg123_id3v2 *v2 = NULL;
+	mpg123_id3(mh, &v1, &v2);
+
+	if (v2) {
+		if(v2->title) {
+			ope_comments_add(comments, FIELD_TITLE, v2->title->p);
+		}
+		if(v2->artist) {
+			ope_comments_add(comments, FIELD_ARTIST, v2->artist->p);
+		}
+		if(v2->album) {
+			ope_comments_add(comments, FIELD_ALBUM, v2->album->p);
+		}
+		if(v2->album_artist) {
+			ope_comments_add(comments, FIELD_ALBUMARTIST, v2->album_artist->p);
+		}
+		if(v2->track_no) {
+			ope_comments_add(comments, FIELD_TRACKNUMBER, v2->track_no->p);
+		}
+		if(v2->genre) {
+			ope_comments_add(comments, FIELD_GENRE, v2->genre->p);
+		}
+		if(v2->year) {
+			ope_comments_add(comments, FIELD_DATE, v2->year->p);
+		}
+		if(v2->picture) {
+			ope_comments_add_picture_from_memory(comments, v2->picture->data, v2->picture->size, -1, NULL);
+		}
+		// ope_comments_add(comments, "DESCRIPTION", "hello world");
+	}
+	else if (v1) {
+		// handle id3v1 data
+	}
+	else {
+		fprintf(stderr, "No ID3 metadata\n");
+	}
+	
 
 	if(encoding != MPG123_ENC_SIGNED_16 && encoding != MPG123_ENC_FLOAT_32)
 	{ /* Signed 16 is the default output format anyways; it would actually by only different if we forced it.
@@ -97,6 +145,7 @@ int main(int argc, char *argv[])
 	samples /= channels;
 	printf("%li samples written.\n", (long)samples);
 	cleanup(mh);
+	ope_comments_destroy(comments);
 	ope_encoder_drain(enc);
 	ope_encoder_destroy(enc);
 	return 0;
