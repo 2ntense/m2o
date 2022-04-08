@@ -42,33 +42,19 @@ int main(int argc, char *argv[])
 	printf( "Input file: %s\n", argv[1]);
 	printf( "Output file: %s\n", argv[2]);
 
-	err = mpg123_init();
 	mh = mpg123_new(NULL, &err);
-
+	err = mpg123_init();
 	err = mpg123_param(mh, MPG123_ADD_FLAGS, MPG123_PICTURE, 1);
-	if(err != MPG123_OK || mh == NULL)
-	{
-		fprintf(stderr, "Basic setup goes wrong: %s", mpg123_plain_strerror(err));
-		cleanup(mh);
-		return -1;
-	}
-
-	/* Let mpg123 work with the file, that excludes MPG123_NEED_MORE messages. */
-	if(mpg123_open(mh, argv[1]) != MPG123_OK
-	    /* Peek into track and get first output format. */
-	    || mpg123_getformat(mh, &rate, &channels, &encoding) != MPG123_OK )
-	{
-		fprintf( stderr, "Trouble with mpg123: %s\n", mpg123_strerror(mh) );
-		cleanup(mh);
-		return -1;
-	}
+	err = mpg123_open(mh, argv[1]);
+	err = mpg123_getformat(mh, &rate, &channels, &encoding);
 
 	mpg123_id3v1 *v1 = NULL;
 	mpg123_id3v2 *v2 = NULL;
-	mpg123_id3(mh, &v1, &v2);
+	
+	err = mpg123_id3(mh, &v1, &v2);
 
-	comments = ope_comments_create();
 	if (v2) {
+		comments = ope_comments_create();
 		if(v2->title) {
 			ope_comments_add(comments, FIELD_TITLE, v2->title->p);
 		}
@@ -101,23 +87,10 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "No ID3 metadata\n");
 	}
 	
-
-	if(encoding != MPG123_ENC_SIGNED_16 && encoding != MPG123_ENC_FLOAT_32)
-	{ /* Signed 16 is the default output format anyways; it would actually by only different if we forced it.
-	     So this check is here just for this explanation. */
-		cleanup(mh);
-		fprintf(stderr, "Bad encoding: 0x%x!\n", encoding);
-		return -2;
-	}
-	/* Ensure that this output format will not change (it could, when we allow it). */
 	mpg123_format_none(mh);
 	mpg123_format(mh, rate, channels, encoding);
 
 	enc = ope_encoder_create_file(argv[2], comments, rate, channels, 0, NULL);
-	if (!enc) {
-		printf("ope encoder create file error\n");
-		return -1;
-	}
 
 	ope_encoder_ctl(enc, OPUS_SET_SIGNAL(OPUS_SIGNAL_MUSIC));
 	ope_encoder_ctl(enc, OPUS_SET_BITRATE(96000));
@@ -126,20 +99,16 @@ int main(int argc, char *argv[])
 	size_t buf_size = mpg123_outblock(mh);
 	short buf[2*buf_size];
 
-	do
-	{
+	while(err == MPG123_OK) {
 		err = mpg123_read(mh, buf, sizeof(buf), &done);
-		printf("done: %zu\n", done);
 		ope_encoder_write(enc, buf, done / (channels*2));
 		samples += done / (channels*2);
-	} while (err==MPG123_OK);
+	}
 
-	if(err != MPG123_DONE)
-	fprintf( stderr, "Warning: Decoding ended prematurely because: %s\n",
-	         err == MPG123_ERR ? mpg123_strerror(mh) : mpg123_plain_strerror(err) );
+	if(err != MPG123_DONE) {
+		fprintf( stderr, "Warning: Decoding ended prematurely because: %s\n", err == MPG123_ERR ? mpg123_strerror(mh) : mpg123_plain_strerror(err) );
+	}
 
-	// samples /= channels;
-	printf("%li samples written.\n", (long)samples);
 	cleanup(mh);
 	ope_comments_destroy(comments);
 	ope_encoder_drain(enc);
